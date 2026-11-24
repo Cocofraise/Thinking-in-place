@@ -223,8 +223,10 @@ llama_model_qwen35::graph::graph(const llm_graph_params & params) :
                 cur = build_layer_attn(inp->get_attn(), cur, inp_pos, il);
             }
 
-            // output-row extraction only on the final iteration of the last layer
-            const bool crop = last && il == n_layer - 1 && crop_before_nextn(inp_out_ids);
+            // The stock single-pass graph keeps only the output rows between attention and FFN.
+            // Under the loop that extraction moves after the block (see below), so that every
+            // iteration works on the same rows.
+            const bool crop = R == 1 && il == n_layer - 1 && crop_before_nextn(inp_out_ids);
             if (crop) {
                 cur   = ggml_get_rows(ctx0, cur,   inp_out_ids);
                 inpSA = ggml_get_rows(ctx0, inpSA, inp_out_ids);
@@ -252,8 +254,8 @@ llama_model_qwen35::graph::graph(const llm_graph_params & params) :
             }
 
             // adaptive depth: per token, once cos(s_{t+1}, s_t) reaches tau the token stops moving
-            // (monotone latch). Skipped on the cropped iteration, where row counts differ.
-            if (loop.adaptive_tau > 0.0f && R > 1 && t > 0 && !crop) {
+            // (monotone latch).
+            if (loop.adaptive_tau > 0.0f && R > 1 && t > 0) {
                 ggml_tensor * dot  = ggml_sum_rows(ctx0, ggml_mul(ctx0, cur, s));   // [1, n_tokens]
                 ggml_tensor * na   = ggml_sqrt(ctx0, ggml_sum_rows(ctx0, ggml_sqr(ctx0, cur)));
                 ggml_tensor * nb   = ggml_sqrt(ctx0, ggml_sum_rows(ctx0, ggml_sqr(ctx0, s)));
@@ -270,6 +272,10 @@ llama_model_qwen35::graph::graph(const llm_graph_params & params) :
             }
 
             s = cur;
+        }
+        if (R > 1 && il == n_layer - 1 && crop_before_nextn(inp_out_ids)) {
+            // looped last layer: output-row extraction after the whole block
+            s = ggml_get_rows(ctx0, s, inp_out_ids);
         }
         cur = s;
 
