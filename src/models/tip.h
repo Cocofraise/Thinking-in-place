@@ -22,11 +22,14 @@
 // All knobs are environment variables, read once. TIP_N=1 (default) builds the stock graph.
 //
 //   TIP_N             R, iterations of the deepest looped layer            (default 1 = off)
-//   TIP_BETA          anchor strength in [0,1]                             (default 0.5)
-//   TIP_BETA_LAW      "phi" : per-layer beta = 1 - 0.618 / R(il)           (default off)
+//   TIP_BETA_LAW      "phi" : beta follows the layer and its budget,        (default phi)
+//                     beta(il) = 1 - 0.618 / R(il), computed once per layer
+//                     "fixed" : one beta for every layer
+//   TIP_BETA          a fixed anchor strength in [0,1]; setting it selects  (default 1 - 0.618/12 = 0.9485
+//                     "fixed" unless TIP_BETA_LAW says otherwise             when the law is "fixed")
 //   TIP_BETA_SCHEDULE "linear" : anneal beta from BETA_MIN (t=0) to beta   (default off)
 //   TIP_BETA_MIN      start of the anneal                                  (default 0.3)
-//   TIP_DEPTH_LAW     "sqrt" | "log" | "square" : taper R with layer index (default flat)
+//   TIP_DEPTH_LAW     "sqrt" | "log" | "square" | "flat" : R per layer        (default sqrt, the validated law)
 //   TIP_LAYERS        csv of layer indices to loop                         (default all full-attention)
 //   TIP_FFN_LAST      1 : run the FFN only on the last iteration           (default 0)
 //   TIP_FREEZE_ROUTE MoE only: keep the experts chosen at iteration 0     (default 1 ; 0 = re-route every iteration)
@@ -43,11 +46,12 @@
 
 struct tip_cfg {
     int   n            = 1;
-    float beta         = 0.5f;
-    bool  beta_phi     = false;
+    static constexpr float phi_inv = 0.6180339887f;   // 1/phi
+    float beta         = 1.0f - phi_inv / 12.0f;      // the fixed value: the law at the reference budget of 12
+    bool  beta_phi     = true;                        // beta follows the layer's own budget
     bool  beta_anneal  = false;
     float beta_min     = 0.3f;
-    int   depth_law    = 0;      // 0 flat, 1 sqrt, 2 log, 3 square
+    int   depth_law    = 1;      // 0 flat, 1 sqrt, 2 log, 3 square
     bool  ffn_last     = false;
     bool  freeze_route = true;
     int   decode_max   = 32;
@@ -62,12 +66,12 @@ struct tip_cfg {
         static const tip_cfg cfg = [] {
             tip_cfg c;
             if (const char * e = getenv("TIP_N"))            { c.n = std::max(1, atoi(e)); }
-            if (const char * e = getenv("TIP_BETA"))         { c.beta = clamp01((float) atof(e)); }
-            if (const char * e = getenv("TIP_BETA_LAW"))     { c.beta_phi = !strcmp(e, "phi"); }
+            if (const char * e = getenv("TIP_BETA"))         { c.beta = clamp01((float) atof(e)); c.beta_phi = false; }
+            if (const char * e = getenv("TIP_BETA_LAW"))     { c.beta_phi = strcmp(e, "fixed") != 0; }
             if (const char * e = getenv("TIP_BETA_SCHEDULE")){ c.beta_anneal = !strcmp(e, "linear"); }
             if (const char * e = getenv("TIP_BETA_MIN"))     { c.beta_min = clamp01((float) atof(e)); }
             if (const char * e = getenv("TIP_DEPTH_LAW")) {
-                c.depth_law = !strcmp(e, "sqrt") ? 1 : !strcmp(e, "log") ? 2 : !strcmp(e, "square") ? 3 : 0;
+                c.depth_law = !strcmp(e, "flat") ? 0 : !strcmp(e, "log") ? 2 : !strcmp(e, "square") ? 3 : 1;
             }
             if (const char * e = getenv("TIP_FFN_LAST"))     { c.ffn_last = atoi(e) != 0; }
             if (const char * e = getenv("TIP_FREEZE_ROUTE")) { c.freeze_route = atoi(e) != 0; }
@@ -113,9 +117,12 @@ struct tip_cfg {
         return std::max(1, (int) std::lround(raw * scale));
     }
 
+    // The loop adds graph nodes in proportion to the budget: scale the graph size with it.
+    uint32_t graph_scale() const { return 1 + (uint32_t) n / 8; }
+
     // Anchor strength at iteration t of a layer that runs R iterations.
     float beta_at(int t, int R) const {
-        const float layer_beta = (beta_phi && R > 1) ? 1.0f - 0.618f / (float) R : beta;
+        const float layer_beta = (beta_phi && R > 1) ? 1.0f - phi_inv / (float) R : beta;
         if (beta_anneal && R > 1) {
             return beta_min + ((float) t / (float) (R - 1)) * (layer_beta - beta_min);
         }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "tip.h"
 #include "llama-model.h"
 #include "llama-graph.h"
 #include "llama-model-loader.h"
@@ -2831,7 +2832,7 @@ struct llama_model_qwen35 : public llama_model_base {
     llama_model_qwen35(const struct llama_model_params & params) : llama_model_base(params) {}
     void load_arch_hparams(llama_model_loader & ml) override;
     void load_arch_tensors(llama_model_loader & ml) override;
-    uint32_t graph_nodes_per_tensor() const override { return 32; }
+    uint32_t graph_nodes_per_tensor() const override { return 32 * tip_cfg::get().graph_scale(); } // TIP: room for the looped blocks
 
     struct graph : public llm_build_delta_net_base {
         graph(const llm_graph_params & params);
@@ -3083,7 +3084,7 @@ struct llama_model_qwen35moe : public llama_model_base {
     llama_model_qwen35moe(const struct llama_model_params & params) : llama_model_base(params) {}
     void load_arch_hparams(llama_model_loader & ml) override;
     void load_arch_tensors(llama_model_loader & ml) override;
-    uint32_t graph_nodes_per_tensor() const override { return 32; }
+    uint32_t graph_nodes_per_tensor() const override { return 32 * tip_cfg::get().graph_scale(); } // TIP: room for the looped blocks
 
     struct graph : public llm_build_delta_net_base {
         graph(const llm_graph_params & params);

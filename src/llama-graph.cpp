@@ -1935,6 +1935,13 @@ ggml_tensor * llm_graph_context::build_lora_mm_id(
         ggml_mul_mat_id(ctx0, w, cur_mm, ids) :
         ggml_mul_mat_id(ctx0, cached ? moe_cache->get_experts(w) : w, cur_mm, slots);
 
+    // TIP: a looped block that routes again selects other experts than its first pass, but a device copy of host
+    // experts only holds the experts of the first selection (see llama_context::sched_copy_experts).
+    // the later selections therefore read the host experts in place, on the CPU.
+    if (moe_cache_pass > 0 && slots == nullptr && w->buffer != nullptr && ggml_backend_buffer_is_host(w->buffer)) {
+        ggml_backend_sched_set_tensor_backend(sched, res, backend_cpu);
+    }
+
     if (w->type == GGML_TYPE_NVFP4) {
         ggml_prec_set_acc(res, GGML_PREC_BF16);
     }
