@@ -1,8 +1,8 @@
 # Thinking in Place (TiP) — training-free recurrent depth for llama.cpp
 
-A small patch on top of [llama.cpp](https://github.com/ggml-org/llama.cpp) that lets a **frozen, pretrained** hybrid model re-apply its own attention blocks several times per generated token. No fine-tuning, no adapters, no extra weights: you load the same GGUF and set an environment variable.
+A patch on top of [llama.cpp](https://github.com/ggml-org/llama.cpp) that lets a **frozen, pretrained** hybrid model re-apply its own attention blocks several times per generated token. No fine-tuning, no adapters, no extra weights: you load the same GGUF and set one environment variable.
 
-Paper: *Thinking in Place: Anchored Recurrent Depth and the Convergence of Modeling* (draft, Vincent Mathieu Malet, ORCID [0009-0003-9945-7296](https://orcid.org/0009-0003-9945-7296)).
+Paper: *Thinking in Place: Anchored Recurrent Depth and the Convergence of Modeling* (Vincent Mathieu Malet, ORCID [0009-0003-9945-7296](https://orcid.org/0009-0003-9945-7296)).
 
 ## What it does
 
@@ -16,12 +16,22 @@ s_{t+1} = Block(in_t)
 
 Four rules keep this safe on a model that was never trained to be iterated:
 
-1. **Anchor every iteration.** Without the blend the iterate drifts out of the region the layer knows. With `beta ≈ 0.947` each step is mostly anchor plus a controlled share of the refined state.
-2. **Spend depth where it matters.** Iterations are allocated per layer by a law of depth. The square-root ramp gives the deepest attention layer the full budget `R` and shallow layers close to one pass.
-3. **Loop only where a token is predicted.** Decode steps and small verification batches (≤ 32 tokens per sequence) are looped. Prompt processing runs single-pass.
+1. **Anchor every iteration.** Without the blend the iterate drifts out of the region the layer knows. The anchor strength follows each layer's own budget, `beta(l) = 1 - φ⁻¹ / R(l)`: the more a layer iterates, the more gently each step moves.
+2. **Spend depth where it matters.** Iterations are allocated per layer by a law of depth, `R(l) = max(1, round(N·√(l / l_max)))`. The deepest attention layer receives the full budget `N`, shallow layers stay close to one pass.
+3. **Loop only where a token is predicted.** Decode steps and short verification batches (≤ 32 tokens per sequence) are looped. Prompt processing runs single-pass.
 4. **Never loop a recurrent layer.** On hybrid attention / state-space models the gated-delta-net layers carry a sequential state that must advance exactly once per token. They always run once.
 
 K/V entries of the current positions are rewritten at each iteration; the last iteration is what later tokens attend to.
+
+## Quick start
+
+Build llama.cpp as usual, then:
+
+```bash
+TIP_N=8 ./llama-server -m model.gguf -c 8192 -ngl 99
+```
+
+With `TIP_N` unset (or `1`) the graph is the stock llama.cpp graph, and the output is identical to unpatched llama.cpp.
 
 ## Supported models
 
@@ -32,94 +42,86 @@ The Qwen3.5-style hybrid family as implemented by llama.cpp:
 | `src/models/qwen35.cpp` | dense hybrid (e.g. 9B, 27B) |
 | `src/models/qwen35moe.cpp` | mixture-of-experts hybrid (e.g. 35B) |
 
-All the logic and every knob live in `src/models/tip.h`. The patch also touches four shared files of llama.cpp, about forty lines marked `TIP`, to let the MoE expert cache serve several selections of one layer in the same pass: `src/llama-moe-cache.cpp`, `src/llama-moe-cache.h`, `src/llama-graph.cpp`, `src/llama-graph.h`.
+The logic and every setting live in `src/models/tip.h`. The patch also adds about fifty lines marked `TIP` to shared files of llama.cpp (`src/llama-moe-cache.cpp`, `src/llama-moe-cache.h`, `src/llama-graph.cpp`, `src/llama-graph.h`, `src/models/models.h`) so that a layer can present several expert selections in one pass and so that the graph is sized for the loop.
 
-## Quick start
+## What works
 
-Build llama.cpp as usual, then:
+Checked against unpatched llama.cpp `af5c583` (2026-11-23), CUDA build, on a 9B dense model and a 35B MoE model.
 
-```bash
-TIP_N=8 TIP_DEPTH_LAW=sqrt TIP_BETA=0.9485 \
-  ./llama-server -m model.gguf -c 8192 -ngl 99
-```
-
-With `TIP_N` unset (or `1`) the graph is the stock llama.cpp graph.
+| Area | Status |
+|---|---|
+| Loop off | same text and same first-token log-probabilities as unpatched llama.cpp, dense and MoE |
+| Loop on | dense and MoE; GPU, CPU-only, and MoE experts kept in host memory (`--n-cpu-moe`) |
+| Speculative decoding | `draft-mtp` and `draft-dflash` return the same text as the loop alone, 2.3 to 2.6 times faster; `draft-dflash2` runs |
+| Parallel slots | 4 and 8 slots, dense and MoE, frozen and free routing |
+| MoE expert cache (`--moe-cache-mib`) | frozen and free routing, with and without CPU share |
+| Every setting below | exercised on both models |
 
 ## Settings
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `TIP_N` | `R`, iterations of the deepest looped layer | `1` (off) |
-| `TIP_BETA` | anchor strength in `[0,1]` | `0.5` |
-| `TIP_DEPTH_LAW` | `sqrt`, `log` or `square`: taper `R` with layer index | flat |
+| `TIP_N` | budget: iterations of the deepest looped layer | `1` (off) |
+| `TIP_DEPTH_LAW` | `sqrt`, `log`, `square` or `flat`: how the budget is spread over layers | `sqrt` |
+| `TIP_BETA_LAW` | `phi`: `beta(l) = 1 - 0.618 / R(l)`, per layer; `fixed`: one value for all layers | `phi` |
+| `TIP_BETA` | a fixed anchor strength in `[0,1]`; setting it selects `fixed` | `0.9485` when fixed |
 | `TIP_LAYERS` | comma-separated layer indices to loop | all full-attention layers |
-| `TIP_BETA_LAW` | `phi`: per-layer `beta = 1 - 0.618 / R(layer)` | off |
-| `TIP_BETA_SCHEDULE` | `linear`: anneal `beta` from `BETA_MIN` to `beta` across iterations | off |
-| `TIP_BETA_MIN` | start of the anneal | `0.3` |
+| `TIP_FREEZE_ROUTE` | MoE: `1` keeps the experts chosen at the first iteration, `0` routes again at each iteration | `1` |
 | `TIP_FFN_LAST` | `1`: run the FFN only on the last iteration (changes the fixed point) | `0` |
-| `TIP_FREEZE_ROUTE` | MoE only: keep the experts chosen at iteration 0 for the whole loop | `1` |
 | `TIP_DECODE_MAX` | largest batch (tokens per sequence) still looped | `32` |
 | `TIP_PREFILL` | `1`: loop prompt-processing batches too | `0` |
 | `TIP_ADAPTIVE_TAU` | per-token freeze once `cos(s_t, s_{t-1}) ≥ tau` | `0` (off) |
 | `TIP_ADAPTIVE_SOFT` | width of a soft (sigmoid) freeze instead of a hard one | `0` |
+| `TIP_BETA_SCHEDULE` | `linear`: anneal `beta` from `TIP_BETA_MIN` across iterations | off |
+| `TIP_BETA_MIN` | start of the anneal | `0.3` |
 
-The configuration the paper validates is `N=8`, `DEPTH_LAW=sqrt`, `BETA=0.9485`, full block looped.
+The measurements of the paper use `TIP_N=8`, the `sqrt` law and a fixed `TIP_BETA=0.9485`, which is the same law evaluated at the reference budget of 12.
 
-### Expert routing inside the loop (MoE)
+A weak fixed anchor is the one setting to avoid: `TIP_BETA=0.5` with a flat budget produces degenerate text.
 
-The expert router sits inside the looped block. This gives two distinct modes, chosen for what they do to the output:
+## Expert routing inside the loop (MoE)
 
-- **Frozen (default).** The experts are chosen once, at the first iteration, and every later iteration of that token uses the same set. Only the discrete choice is frozen; the mixing weights are recomputed each iteration. It is the same reader re-reading: the mode for catching a specific error.
-- **Free (`TIP_FREEZE_ROUTE=0`).** The router picks again at every iteration. The reader changes each time: the mode for the richness of open-ended generation.
+The expert router sits inside the looped block. This gives two distinct modes, chosen for what they do to the output.
 
-On a small panel of Bayesian trap questions (35B, reasoning enabled, n = 4 items) the frozen mode caught its own errors on the two items where the two modes differed. Treat this as a signal, not a law.
+- **Frozen (default).** The experts are chosen once, at the first iteration, and every later iteration of that token uses the same set. Only the discrete choice is frozen; the mixing weights are recomputed each iteration. It is one reader going over the same page.
+- **Free (`TIP_FREEZE_ROUTE=0`).** The router picks again at every iteration. The reader changes each time.
 
-Both modes also work with the MoE expert cache of llama.cpp (`--moe-cache-mib`), which keeps the experts in host memory and uploads the selected ones to the GPU. That cache originally handled one selection per layer and per pass; this patch lets a layer present several, so that free routing uploads the experts of each iteration.
+What the two modes do, read on full outputs of the 35B with reasoning enabled:
 
-Speed: without the cache the two modes run at the same speed (within about 1%). With the cache, frozen routing is about 8% faster (27.8 against 25.7 tokens/s on the 35B, experts of 16 layers in host memory, 1 GiB cache), because the experts of a token are uploaded once instead of once per iteration.
+| | Frozen | Free |
+|---|---|---|
+| Four Bayesian traps | correct final answer on 4 of 4; right the first time on the base-rate item | correct on 3 of 4; on the base-rate item it slips, notices, fixes, and runs out of budget |
+| A trade-off to argue | conditional verdict, lists when it would switch | one committed line |
+| A short tale | tighter, one idea carried to its end | longer, more images, one continuity slip left in |
+| A thought experiment | one organising idea | more alternatives laid side by side |
+| Hardest open prompt | deliberates without writing an answer | writes the piece |
+
+Frozen for checking a computation, free for open-ended generation. One run per mode and per prompt: a reading, not a rate.
+
+Speed is the same in both modes (within about 1%), except with the MoE expert cache, where frozen routing is about 8% faster because a token's experts are uploaded once instead of once per iteration.
 
 ## Cost
 
-The loop adds compute only on full-attention layers and only on predicting passes. Measured overhead at `R=8`, sqrt law, real context depth of about 11k tokens, no speculative decoding (author's measurements, earlier research fork):
+The loop adds compute only on full-attention layers and only on predicting passes. Measured on this port at about 13,500 tokens of context, without speculative decoding:
 
-| Model | Slowdown |
-|---|---|
-| 9B hybrid | ×1.5 to ×1.65 |
-| 35B hybrid MoE | ×2.7 |
-| 27B dense | ×3.4 |
+| Model | Single pass | `TIP_N=8`, sqrt | Uniform 8 | Uniform 16 |
+|---|---|---|---|---|
+| 9B | 16.2 ms/token | 34.4 (×2.1) | 43.8 (×2.7) | 75.4 (×4.7) |
+| 35B MoE, experts of 16 layers on CPU | 18.5 ms/token | 31.4 (×1.7) | — | — |
 
-The cost grows with the share of the model that is looped and with the weight of the FFN.
+On the 9B the time per token is linear in the number of block evaluations, 0.49 ms each. The loop therefore executes exactly the iterations the schedule allocates, and the square-root schedule costs about half of a uniform budget of 12 (45 block evaluations per token against 96).
 
-Measured on this port at about 13,500 tokens of context, no speculation: 9B 16.2 → 34.4 ms per token (×2.1); 35B with the experts of 16 layers on CPU 18.5 → 31.4 ms (×1.7). On the 9B the time per token is linear in the number of block evaluations (0.49 ms each), so a uniform budget of 12 costs about ×3.7.
-
-## What has been checked on this port
-
-Upstream base: llama.cpp `af5c583` (2026-11-23). CUDA build, temperature 0.
-
-| Model | Loop off vs unpatched llama.cpp | Loop on (`R=8`, sqrt, `beta=0.9485`) |
-|---|---|---|
-| 9B dense hybrid | identical text and identical first-token log-probabilities | probabilities change, output coherent, ×1.7 slower on a short context |
-| 35B MoE hybrid | identical text and identical first-token log-probabilities | probabilities change, output coherent; frozen and free routing give different probabilities |
-
-Speculative decoding, loop on (`R=8`, sqrt), 9B hybrid, same two prompts:
-
-| Speculation | Text vs loop without speculation | Speed vs loop without speculation | Draft acceptance |
-|---|---|---|---|
-| `--spec-type draft-mtp` | identical | ×2.6 | 80% |
-| `--spec-type draft-dflash` (two drafters tried) | identical | ×2.3 | 74% |
-
-Verification batches are short, so they go through the looped path. `draft-dflash2`, `draft-dspark`, `draft-eagle3` and the n-gram drafters have not been tried.
-
-This is a wiring check on two prompts per configuration. It shows the patch is inert when off and active when on. It is **not** a quality evaluation.
+With speculative decoding most of this overhead disappears: the 9B at `TIP_N=8` runs at 81 tokens/s with `draft-mtp`, faster than the single pass without speculation (59 tokens/s).
 
 ## Results reported in the paper
 
 Internal evaluations, small n, one model family, quantized checkpoints, consumer hardware. Holdout replication is pending.
 
-- The square-root schedule at budget 8 matched a uniform budget of 12 on blind panels at about half the loop compute (53% fewer block iterations). A uniform budget of 16 was worse than both.
+- The square-root schedule at budget 8 matched a uniform budget of 12 on blind panels. A uniform budget of 16 was worse than both.
 - Per-layer probes show the iterate settling within about three iterations.
 - Long unguarded generations collapsed into repetition far less often under the anchored loop.
 - The reasoning benefit appears when the model actually deliberates. A model that leaves its reasoning block empty is neither helped nor harmed. Forcing reasoning off on a model trained to deliberate degrades the single pass, and the loop amplifies that.
+- Sampling temperature is not amplified by the loop: across 3,024 positions replayed along identical prefixes the gap to the single pass is the same at T = 0, 0.7 and 1.0, and long generations show no repetition collapse, with a fixed or a per-layer anchor.
 
 ## Limits
 
@@ -127,15 +129,14 @@ Internal evaluations, small n, one model family, quantized checkpoints, consumer
 - More iterations are not monotonically better. Past the peak, quality regresses.
 - Prompt processing is not looped, so tasks whose difficulty lies in reading a long input get no benefit.
 - One model family. Pure-attention stacks have no state-space majority to bound the cost.
-- Not ported from the research fork: the convergence probe, per-request control of `R`, and the CUDA expert-gather kernel that recovers part of the MoE cost.
-- `TIP_BETA_LAW`, `BETA_SCHEDULE`, `FFN_LAST` and the adaptive freeze are ported but have not been exercised on this port.
-- Concurrency above one slot has not been tested on this port.
+- With several slots, outputs are not token-identical to a single slot. This is a property of batched inference in llama.cpp and holds with the loop off as well.
+- Not included: the convergence probe, per-request control of the budget, and the CUDA expert-gather kernel described in the paper.
 
 ## Related work
 
 Looped and recurrent-depth transformers are an active line of work, mostly **trained** with the loop: the model is pretrained or fine-tuned so that a shared block can be applied several times. SenseNova-Loop-9B (November 2026) is a recent example on a model of similar shape: a block of 24 layers is passed twice, with learned two-stream residual mixing.
 
-This patch takes the other road. Nothing is trained. It iterates individual attention blocks of an existing checkpoint, with a fixed anchor, a depth schedule, and a rule for which passes are looped. The two approaches are not exclusive.
+This patch takes the other road. Nothing is trained. It iterates individual attention blocks of an existing checkpoint, with an anchor, a depth schedule, and a rule for which passes are looped. The two approaches are not exclusive.
 
 Direction sparked by a survey of loop-transformer papers (arXiv 2604.07822, 2604.11791, 2604.12946, 2507.10524). The anchoring, the schedule and the port are the author's own.
 
