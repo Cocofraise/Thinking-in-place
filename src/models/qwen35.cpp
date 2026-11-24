@@ -1,5 +1,10 @@
 #include "models.h"
 #include "llama-memory-recurrent.h"
+#include "tip.h"
+
+// The TIP code in this file is Copyright (c) 2026 Vincent Mathieu Malet and is licensed
+// for non-commercial use only (PolyForm-Noncommercial-1.0.0), see LICENSE-TIP.md.
+// The rest of this file is llama.cpp, MIT.
 
 void llama_model_qwen35::load_arch_hparams(llama_model_loader & ml) {
     ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS,       hparams.f_norm_rms_eps);
@@ -159,49 +164,114 @@ llama_model_qwen35::graph::graph(const llm_graph_params & params) :
     ggml_tensor * inp_pos     = build_inp_pos();
     ggml_tensor * inp_out_ids = build_inp_out_ids();
 
+    const tip_cfg & loop = tip_cfg::get();
+    int loop_il_max = 0;   // deepest full-attention layer: where the depth law reaches R
+    for (int il = 0; il < n_layer; ++il) {
+        if (!hparams.is_recr(il)) {
+            loop_il_max = il;
+        }
+    }
+    if (loop.n > 1) {
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            LLAMA_LOG_INFO("%s: TIP active: R=%d beta=%.4f depth_law=%d decode_max=%d prefill=%d\n",
+                    __func__, loop.n, loop.beta, loop.depth_law, loop.decode_max, loop.prefill ? 1 : 0);
+        }
+    }
+
     // MTP/NextN layers are loaded as extra decoder blocks but not executed in the main pass.
     for (int il = 0; il < n_layer; ++il) {
         res->t_layer_inp[il] = inpL;
 
-        ggml_tensor * inpSA = inpL;
+        // TIP: iterate the block R times on its own hidden state (see tip.h).
+        // R == 1 (default, recurrent layers, prompt-processing batches) is the stock graph.
+        const bool is_full_attn = !hparams.is_recr(il);
+        const int  R = loop.iterations(il, loop_il_max, is_full_attn, ubatch.n_seq_tokens);
 
-        cur = build_norm(inpL, model.layers[il].attn_norm, nullptr, LLM_NORM_RMS, il);
-        cb(cur, "attn_norm", il);
+        ggml_tensor * s0     = inpL;      // anchor: the layer's original input
+        ggml_tensor * s      = inpL;      // current iterate
+        ggml_tensor * frozen = nullptr;   // per-token convergence latch (adaptive depth)
 
-        ggml_build_forward_expand(gf, cur);
+        for (int t = 0; t < R; ++t) {
+            const bool last = t == R - 1;
 
-        // Determine layer type and build appropriate attention mechanism
-        if (hparams.is_recr(il)) {
-            // Linear attention layer (gated delta net)
-            cur = build_layer_attn_linear(inp->get_recr(), cur, il);
-        } else {
-            // Full attention layer
-            cur = build_layer_attn(inp->get_attn(), cur, inp_pos, il);
+            // input injection: pull the iterate back toward the layer's original input
+            ggml_tensor * in_t = s;
+            const float beta = loop.beta_at(t, R);
+            if (t > 0 && beta > 0.0f) {
+                in_t = ggml_add(ctx0,
+                        ggml_scale(ctx0, s,  1.0f - beta),
+                        ggml_scale(ctx0, s0, beta));
+                cb(in_t, "loop_inject", il);
+            }
+
+            ggml_tensor * inpSA = in_t;
+
+            cur = build_norm(in_t, model.layers[il].attn_norm, nullptr, LLM_NORM_RMS, il);
+            cb(cur, "attn_norm", il);
+
+            ggml_build_forward_expand(gf, cur);
+
+            // Determine layer type and build appropriate attention mechanism
+            if (hparams.is_recr(il)) {
+                // Linear attention layer (gated delta net)
+                cur = build_layer_attn_linear(inp->get_recr(), cur, il);
+            } else {
+                // Full attention layer. Looped: K/V of the current positions are rewritten at
+                // every iteration, the last write is what later tokens attend to.
+                cur = build_layer_attn(inp->get_attn(), cur, inp_pos, il);
+            }
+
+            // output-row extraction only on the final iteration of the last layer
+            const bool crop = last && il == n_layer - 1 && crop_before_nextn(inp_out_ids);
+            if (crop) {
+                cur   = ggml_get_rows(ctx0, cur,   inp_out_ids);
+                inpSA = ggml_get_rows(ctx0, inpSA, inp_out_ids);
+            }
+
+            // Residual connection (against this iteration's block input)
+            cur = ggml_add(ctx0, cur, inpSA);
+            cb(cur, "attn_residual", il);
+
+            if (!loop.ffn_last || last) {
+                // Save the tensor before post-attention norm for residual connection
+                ggml_tensor * ffn_residual = cur;
+
+                // Post-attention norm
+                ggml_tensor * attn_post_norm = build_norm(cur, model.layers[il].attn_post_norm, nullptr, LLM_NORM_RMS, il);
+                cb(attn_post_norm, "attn_post_norm", il);
+
+                // Dense FFN layer - without residual connection
+                cur = build_layer_ffn(attn_post_norm, il);
+                cb(cur, "ffn_out", il);
+
+                // Residual connection for FFN - add to the tensor from before post_attention_layernorm
+                cur = ggml_add(ctx0, cur, ffn_residual);
+                cb(cur, "post_ffn", il);
+            }
+
+            // adaptive depth: per token, once cos(s_{t+1}, s_t) reaches tau the token stops moving
+            // (monotone latch). Skipped on the cropped iteration, where row counts differ.
+            if (loop.adaptive_tau > 0.0f && R > 1 && t > 0 && !crop) {
+                ggml_tensor * dot  = ggml_sum_rows(ctx0, ggml_mul(ctx0, cur, s));   // [1, n_tokens]
+                ggml_tensor * na   = ggml_sqrt(ctx0, ggml_sum_rows(ctx0, ggml_sqr(ctx0, cur)));
+                ggml_tensor * nb   = ggml_sqrt(ctx0, ggml_sum_rows(ctx0, ggml_sqr(ctx0, s)));
+                ggml_tensor * cosv = ggml_div(ctx0, dot, ggml_scale_bias(ctx0, ggml_mul(ctx0, na, nb), 1.0f, 1e-12f));
+                ggml_tensor * conv = loop.adaptive_soft > 0.0f
+                    ? ggml_sigmoid(ctx0, ggml_scale_bias(ctx0, cosv, 1.0f / loop.adaptive_soft, -loop.adaptive_tau / loop.adaptive_soft))
+                    : ggml_step(ctx0, ggml_scale_bias(ctx0, cosv, 1.0f, -loop.adaptive_tau));
+                frozen = frozen
+                    ? ggml_sub(ctx0, ggml_add(ctx0, frozen, conv), ggml_mul(ctx0, frozen, conv))   // probabilistic OR
+                    : conv;
+                ggml_tensor * gate = ggml_scale_bias(ctx0, frozen, -1.0f, 1.0f);                   // 1 - frozen
+                cur = ggml_add(ctx0, s, ggml_mul(ctx0, ggml_sub(ctx0, cur, s), gate));
+                cb(cur, "loop_adaptive_gate", il);
+            }
+
+            s = cur;
         }
-
-        if (il == n_layer - 1 && crop_before_nextn(inp_out_ids)) {
-            cur   = ggml_get_rows(ctx0, cur,   inp_out_ids);
-            inpSA = ggml_get_rows(ctx0, inpSA, inp_out_ids);
-        }
-
-        // Residual connection
-        cur = ggml_add(ctx0, cur, inpSA);
-        cb(cur, "attn_residual", il);
-
-        // Save the tensor before post-attention norm for residual connection
-        ggml_tensor * ffn_residual = cur;
-
-        // Post-attention norm
-        ggml_tensor * attn_post_norm = build_norm(cur, model.layers[il].attn_post_norm, nullptr, LLM_NORM_RMS, il);
-        cb(attn_post_norm, "attn_post_norm", il);
-
-        // Dense FFN layer - without residual connection
-        cur = build_layer_ffn(attn_post_norm, il);
-        cb(cur, "ffn_out", il);
-
-        // Residual connection for FFN - add to the tensor from before post_attention_layernorm
-        cur = ggml_add(ctx0, cur, ffn_residual);
-        cb(cur, "post_ffn", il);
+        cur = s;
 
         cur = build_cvec(cur, il);
         cb(cur, "l_out", il);
