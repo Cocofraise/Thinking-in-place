@@ -22,11 +22,11 @@
 // All knobs are environment variables, read once. TIP_N=1 (default) builds the stock graph.
 //
 //   TIP_N             R, iterations of the deepest looped layer            (default 1 = off)
-//   TIP_BETA_LAW      "phi" : beta follows the layer and its budget,        (default phi)
-//                     beta(il) = 1 - 0.618 / R(il), computed once per layer
-//                     "fixed" : one beta for every layer
-//   TIP_BETA          a fixed anchor strength in [0,1]; setting it selects  (default 1 - 0.618/12 = 0.9485
-//                     "fixed" unless TIP_BETA_LAW says otherwise             when the law is "fixed")
+//   TIP_BETA_LAW      how the anchor strength is derived                    (default budget)
+//                     "budget" : beta = 1 - 0.618 / N, one value for every layer, from the budget
+//                     "ref"    : beta = 1 - 0.618 / 12 = 0.9485, whatever the budget
+//                     "layer"  : beta(il) = 1 - 0.618 / R(il), from each layer's own iterations
+//   TIP_BETA          an explicit anchor strength in [0,1], overrides the law
 //   TIP_BETA_SCHEDULE "linear" : anneal beta from BETA_MIN (t=0) to beta   (default off)
 //   TIP_BETA_MIN      start of the anneal                                  (default 0.3)
 //   TIP_DEPTH_LAW     "sqrt" | "log" | "square" | "flat" : R per layer        (default sqrt, the validated law)
@@ -47,8 +47,8 @@
 struct tip_cfg {
     int   n            = 1;
     static constexpr float phi_inv = 0.6180339887f;   // 1/phi
-    float beta         = 1.0f - phi_inv / 12.0f;      // the fixed value: the law at the reference budget of 12
-    bool  beta_phi     = true;                        // beta follows the layer's own budget
+    float beta         = -1.0f;                       // explicit value (TIP_BETA), < 0 = derived from the law
+    int   beta_law     = 0;                           // 0 budget, 1 ref, 2 layer
     bool  beta_anneal  = false;
     float beta_min     = 0.3f;
     int   depth_law    = 1;      // 0 flat, 1 sqrt, 2 log, 3 square
@@ -66,8 +66,8 @@ struct tip_cfg {
         static const tip_cfg cfg = [] {
             tip_cfg c;
             if (const char * e = getenv("TIP_N"))            { c.n = std::max(1, atoi(e)); }
-            if (const char * e = getenv("TIP_BETA"))         { c.beta = clamp01((float) atof(e)); c.beta_phi = false; }
-            if (const char * e = getenv("TIP_BETA_LAW"))     { c.beta_phi = strcmp(e, "fixed") != 0; }
+            if (const char * e = getenv("TIP_BETA"))         { c.beta = clamp01((float) atof(e)); }
+            if (const char * e = getenv("TIP_BETA_LAW"))     { c.beta_law = !strcmp(e, "ref") ? 1 : (!strcmp(e, "layer") || !strcmp(e, "phi")) ? 2 : 0; }
             if (const char * e = getenv("TIP_BETA_SCHEDULE")){ c.beta_anneal = !strcmp(e, "linear"); }
             if (const char * e = getenv("TIP_BETA_MIN"))     { c.beta_min = clamp01((float) atof(e)); }
             if (const char * e = getenv("TIP_DEPTH_LAW")) {
@@ -122,7 +122,10 @@ struct tip_cfg {
 
     // Anchor strength at iteration t of a layer that runs R iterations.
     float beta_at(int t, int R) const {
-        const float layer_beta = (beta_phi && R > 1) ? 1.0f - phi_inv / (float) R : beta;
+        const float layer_beta = beta >= 0.0f ? beta                                   // explicit
+            : beta_law == 1 ? 1.0f - phi_inv / 12.0f                                   // reference budget
+            : beta_law == 2 ? 1.0f - phi_inv / (float) std::max(R, 1)                  // this layer's iterations
+            :                 1.0f - phi_inv / (float) std::max(n, 1);                 // the budget
         if (beta_anneal && R > 1) {
             return beta_min + ((float) t / (float) (R - 1)) * (layer_beta - beta_min);
         }

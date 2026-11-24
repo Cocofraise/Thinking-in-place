@@ -31,7 +31,7 @@ This repository contains code and a paper, not weights. The patch modifies the i
 s_0     = block input                         (the anchor)
 in_t    = (1 - beta) * s_t + beta * s_0       (t > 0)
 s_{t+1} = Block(in_t)                         (attention + FFN)
-R(l) = max(1, round(N·√(l/l_max)))            beta(l) = 1 - φ⁻¹ / R(l)
+R(l) = max(1, round(N·√(l/l_max)))            beta = 1 - φ⁻¹ / N
 ```
 
 Only full-attention layers loop. Recurrent (gated-delta-net) layers run once. Only predicting passes loop; prompt processing is single-pass.
@@ -45,6 +45,20 @@ TIP_N=8 ./llama-server -m model.gguf -c 8192 -ngl 99
 ```
 
 Unset `TIP_N` and you get stock llama.cpp, with identical output. Every setting is documented in `TIP.md`.
+
+## What it buys
+
+The loop helps where a single pass is fragile, and only there. Nine reasoning items with a checkable answer, six variants each, temperature 0, on a 9B model at its shipped quantization (Q5) and one step lower (Q4):
+
+| Model | Single pass | `TIP_N=8` |
+|---|---|---|
+| Q5 | 47/54 | 50/54 |
+| Q4 | 45/54 | 53/54 |
+| Both | 92/108 | 103/108 |
+
+Paired item by item, the loop wins 13 answers and loses 2 (exact two-sided p = 0.007). Seven of the nine items are at ceiling in both settings; the gain comes from the two items the single pass gets wrong most often. Two quantization steps lower, where the model degenerates, the loop recovers nothing: it reaches a capacity that is there, it does not replace one that is gone.
+
+On public benchmarks, same model: GSM8K (first 200 test questions) is saturated, 195 against 192, nothing to recover; on MATH-500 levels 4–5 with a numeric answer (158 questions) the loop goes from 124 (78.5%) to 134 (84.8%), 19 answers won against 9 lost (p = 0.087). No gain where the model is already right, a gain where it is not.
 
 ## What it supports
 
@@ -74,7 +88,8 @@ Time per token is linear in the number of block evaluations. With `draft-mtp` th
 | Loop off is identical to unpatched llama.cpp | same text and first-token log-probabilities, dense and MoE |
 | The loop executes exactly the scheduled iterations | 0.49 ms per block evaluation across three budgets |
 | Sampling temperature is not amplified | 3,024 positions replayed along identical prefixes; same gap at T = 0, 0.7 and 1.0 |
-| No repetition collapse in long generations | 1,400-token generations, fixed and per-layer anchor |
+| No repetition collapse in long generations | 1,400-token generations, T = 0, 0.7 and 1.0 |
+| The loop does not move a quantized model's probabilities closer to the original | same distance with and without the loop, dense and MoE |
 | sqrt schedule at budget 8 ≈ uniform budget 12, at about half the loop compute | paper, internal blind panels, small n |
 | Iterate settles in about three iterations | paper, per-layer probes |
 | Reasoning benefit when the model actually deliberates | paper, two models, a handful of items |
@@ -93,6 +108,10 @@ The quality results are internal evaluations on one model family and quantized c
 - Too many iterations make results worse.
 - No benefit on tasks whose difficulty lies in reading the prompt.
 - One model family.
+
+## How this was made
+
+Research, code and writing were carried out with AI assistance. The author designed the mechanism and directed the experiments, and has read the results, the generated outputs and the conclusions, for which he takes responsibility. The prose was drafted with AI assistance and has not been reviewed word by word by the author.
 
 ## How this differs from trained looped models
 

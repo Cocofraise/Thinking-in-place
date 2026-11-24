@@ -16,7 +16,7 @@ s_{t+1} = Block(in_t)
 
 Four rules keep this safe on a model that was never trained to be iterated:
 
-1. **Anchor every iteration.** Without the blend the iterate drifts out of the region the layer knows. The anchor strength follows each layer's own budget, `beta(l) = 1 - φ⁻¹ / R(l)`: the more a layer iterates, the more gently each step moves.
+1. **Anchor every iteration.** Without the blend the iterate drifts out of the region the layer knows. The anchor strength follows the budget, `beta = 1 - φ⁻¹ / N`: the more iterations are allowed, the more gently each step moves.
 2. **Spend depth where it matters.** Iterations are allocated per layer by a law of depth, `R(l) = max(1, round(N·√(l / l_max)))`. The deepest attention layer receives the full budget `N`, shallow layers stay close to one pass.
 3. **Loop only where a token is predicted.** Decode steps and short verification batches (≤ 32 tokens per sequence) are looped. Prompt processing runs single-pass.
 4. **Never loop a recurrent layer.** On hybrid attention / state-space models the gated-delta-net layers carry a sequential state that must advance exactly once per token. They always run once.
@@ -32,6 +32,38 @@ TIP_N=8 ./llama-server -m model.gguf -c 8192 -ngl 99
 ```
 
 With `TIP_N` unset (or `1`) the graph is the stock llama.cpp graph, and the output is identical to unpatched llama.cpp.
+
+## What it buys
+
+The loop helps where a single pass is fragile, and only there. Nine reasoning items with a checkable answer, six variants each, temperature 0, reasoning enabled, on a 9B model at its shipped quantization (Q5) and one step lower (Q4):
+
+| Model | Single pass | `TIP_N=8` |
+|---|---|---|
+| Q5 | 47/54 | 50/54 |
+| Q4 | 45/54 | 53/54 |
+| Both | 92/108 | 103/108 |
+
+Paired item by item, the loop wins 13 answers and loses 2 (exact two-sided p = 0.007). Seven of the nine items are at ceiling in both settings; the whole gain comes from the two items the single pass gets wrong most often (a date computation, 3/12 → 8/12, and a two-street probability, 7/12 → 11/12). The variants are perturbations of nine statements, not independent questions.
+
+On two public benchmarks, same model and settings:
+
+| Benchmark | Single pass | `TIP_N=8` | Paired (won / lost) |
+|---|---|---|---|
+| GSM8K, first 200 test questions | 195 (97.5%) | 192 (96.0%) | 2 / 5 |
+| MATH-500, levels 4–5 with a plain numeric answer (158) | 124 (78.5%) | 134 (84.8%) | 19 / 9 |
+
+GSM8K is saturated for this model: nothing to recover, and the loop moves a few answers either way. On the harder MATH-500 subset it gains 6.3 points (exact two-sided p = 0.087: a direction, not yet an established difference at this size). No gain where the model is already right, a gain where it is not. Do not expect the loop to help on a task your model already solves.
+
+Going down the quantization ladder shows where the loop stops helping:
+
+| Quantization | Single pass | `TIP_N=8` | |
+|---|---|---|---|
+| Q5 | 47/54 | 50/54 | capacity present, mostly at ceiling |
+| Q4 | 45/54 | 53/54 | present and fragile: recovered |
+| Q3 (re-quantized, degenerate) | 10/27 | 9/27 | lost: not recovered |
+| Q2 | 0/27 | 0/27 | absent: not filled |
+
+The loop does not bring the probabilities of a quantized model closer to the original (same distance with and without it, on the dense and on the MoE model). It changes how often the reasoning lands.
 
 ## Supported models
 
@@ -63,8 +95,7 @@ Checked against unpatched llama.cpp `af5c583` (2026-11-23), CUDA build, on a 9B 
 |---|---|---|
 | `TIP_N` | budget: iterations of the deepest looped layer | `1` (off) |
 | `TIP_DEPTH_LAW` | `sqrt`, `log`, `square` or `flat`: how the budget is spread over layers | `sqrt` |
-| `TIP_BETA_LAW` | `phi`: `beta(l) = 1 - 0.618 / R(l)`, per layer; `fixed`: one value for all layers | `phi` |
-| `TIP_BETA` | a fixed anchor strength in `[0,1]`; setting it selects `fixed` | `0.9485` when fixed |
+| `TIP_BETA` | an explicit anchor strength in `[0,1]`, overrides the law | derived from the budget |
 | `TIP_LAYERS` | comma-separated layer indices to loop | all full-attention layers |
 | `TIP_FREEZE_ROUTE` | MoE: `1` keeps the experts chosen at the first iteration, `0` routes again at each iteration | `1` |
 | `TIP_FFN_LAST` | `1`: run the FFN only on the last iteration (changes the fixed point) | `0` |
@@ -72,10 +103,16 @@ Checked against unpatched llama.cpp `af5c583` (2026-11-23), CUDA build, on a 9B 
 | `TIP_PREFILL` | `1`: loop prompt-processing batches too | `0` |
 | `TIP_ADAPTIVE_TAU` | per-token freeze once `cos(s_t, s_{t-1}) ≥ tau` | `0` (off) |
 | `TIP_ADAPTIVE_SOFT` | width of a soft (sigmoid) freeze instead of a hard one | `0` |
+
+Settings kept for diagnosis and experiments, not for regular use:
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `TIP_BETA_LAW` | `budget`: `beta = 1 - 0.618 / N`; `ref`: `beta = 1 - 0.618 / 12 = 0.9485` whatever the budget; `layer`: `beta(l) = 1 - 0.618 / R(l)`, from each layer's own iterations | `budget` |
 | `TIP_BETA_SCHEDULE` | `linear`: anneal `beta` from `TIP_BETA_MIN` across iterations | off |
 | `TIP_BETA_MIN` | start of the anneal | `0.3` |
 
-The measurements of the paper use `TIP_N=8`, the `sqrt` law and a fixed `TIP_BETA=0.9485`, which is the same law evaluated at the reference budget of 12.
+With `TIP_N=8` the anchor is `1 - 0.618 / 8 = 0.923`; the accuracy tables above were run with that value passed explicitly (`TIP_N=8 TIP_BETA=0.92275`). Generation at temperature 0 is deterministic for a given value, but a change in the sixth decimal of `beta` is enough to change individual texts, so use the explicit value to reproduce them token for token. The earlier measurements of the paper use `TIP_BETA=0.9485`, the same law at the reference budget of 12. On the accuracy bench the per-layer law did not match the other two (23/27 against 25/27 and 26/27), which is why it is kept as a diagnostic.
 
 A weak fixed anchor is the one setting to avoid: `TIP_BETA=0.5` with a flat budget produces degenerate text.
 
@@ -149,3 +186,7 @@ Shared for non-commercial use.
 - **Commercial use requires a licence from the author.**
 
 Details and contact: `LICENSE-TIP.md`. This repository ships code only; model weights keep their own licences.
+
+## How this was made
+
+Research, code and writing were carried out with AI assistance. The author designed the mechanism and directed the experiments, and has read the results, the generated outputs and the conclusions, for which he takes responsibility. The prose was drafted with AI assistance and has not been reviewed word by word by the author.

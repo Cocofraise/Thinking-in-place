@@ -176,7 +176,7 @@ llama_model_qwen35::graph::graph(const llm_graph_params & params) :
         if (!logged) {
             logged = true;
             LLAMA_LOG_INFO("%s: TIP active: R=%d beta=%.4f depth_law=%d decode_max=%d prefill=%d\n",
-                    __func__, loop.n, loop.beta, loop.depth_law, loop.decode_max, loop.prefill ? 1 : 0);
+                    __func__, loop.n, loop.beta_at(0, loop.n), loop.depth_law, loop.decode_max, loop.prefill ? 1 : 0);
         }
     }
 
