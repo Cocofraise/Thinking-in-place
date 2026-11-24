@@ -58,7 +58,7 @@ Unset `TIP_N` and you get stock llama.cpp. Full list of settings: see `TIP.md`.
 | Loop on changes the distribution and stays coherent | Checked on this port, two prompts per model |
 | Loop on with speculative decoding (`draft-mtp`, `draft-dflash`) gives the same text, 2.3 to 2.6 times faster | Checked on this port, 9B, two prompts |
 | Sampling temperature is not amplified by the loop at the validated setting | Checked on this port, 9B, 3,024 replayed positions and 28 long generations |
-| sqrt schedule at budget 8 ≈ uniform budget 12, about 45% less loop compute | Paper, internal blind panels, small n |
+| sqrt schedule at budget 8 ≈ uniform budget 12, at about half the loop compute (53% fewer block iterations) | Paper, internal blind panels, small n |
 | Iterate settles in about three iterations | Paper, per-layer probes |
 | Fewer repetition collapses in long generations | Paper, internal workloads |
 | Reasoning benefit when the model actually deliberates | Paper, two models, a handful of items |

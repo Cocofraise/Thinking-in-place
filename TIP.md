@@ -110,7 +110,7 @@ This is a wiring check on two prompts per configuration. It shows the patch is i
 
 Internal evaluations, small n, one model family, quantized checkpoints, consumer hardware. Holdout replication is pending.
 
-- The square-root schedule at budget 8 matched a uniform budget of 12 on blind panels at about 45% less loop compute. A uniform budget of 16 was worse than both.
+- The square-root schedule at budget 8 matched a uniform budget of 12 on blind panels at about half the loop compute (53% fewer block iterations). A uniform budget of 16 was worse than both.
 - Per-layer probes show the iterate settling within about three iterations.
 - Long unguarded generations collapsed into repetition far less often under the anchored loop.
 - The reasoning benefit appears when the model actually deliberates. A model that leaves its reasoning block empty is neither helped nor harmed. Forcing reasoning off on a model trained to deliberate degrades the single pass, and the loop amplifies that.
