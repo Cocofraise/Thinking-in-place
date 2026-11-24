@@ -74,6 +74,8 @@ The expert router sits inside the looped block. This gives two distinct modes, c
 
 On a small panel of Bayesian trap questions (35B, reasoning enabled, n = 4 items) the frozen mode caught its own errors on the two items where the two modes differed. Treat this as a signal, not a law.
 
+With the MoE expert cache of llama.cpp (`--moe-cache-mib`) routing is always frozen, whatever `TIP_FREEZE_ROUTE` says: that cache keeps one slot table per layer and per pass, so a layer has to present a single selection. The two modes run at the same speed on this port.
+
 ## Cost
 
 The loop adds compute only on full-attention layers and only on predicting passes. Measured overhead at `R=8`, sqrt law, real context depth of about 11k tokens, no speculative decoding (author's measurements, earlier research fork):
@@ -85,6 +87,8 @@ The loop adds compute only on full-attention layers and only on predicting passe
 | 27B dense | ×3.4 |
 
 The cost grows with the share of the model that is looped and with the weight of the FFN.
+
+Measured on this port at about 13,500 tokens of context, no speculation: 9B 16.2 → 34.4 ms per token (×2.1); 35B with the experts of 16 layers on CPU 18.5 → 31.4 ms (×1.7). On the 9B the time per token is linear in the number of block evaluations (0.49 ms each), so a uniform budget of 12 costs about ×3.7.
 
 ## What has been checked on this port
 
