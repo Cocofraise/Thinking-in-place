@@ -74,6 +74,8 @@ The Qwen3.5-style hybrid family as implemented by llama.cpp:
 | `src/models/qwen35.cpp` | dense hybrid (e.g. 9B, 27B) |
 | `src/models/qwen35moe.cpp` | mixture-of-experts hybrid (e.g. 35B) |
 
+Tested checkpoints: Qwen 3.8 27B, Qwen 3.5 35B, Qwythos 9B, Ornith 9B and 35B. The accuracy tables above are on Qwythos 9B. The loop is compatible with the Qwen hybrid architecture in general; other architectures are untested.
+
 The logic and every setting live in `src/models/tip.h`. The patch also adds about fifty lines marked `TIP` to shared files of llama.cpp (`src/llama-moe-cache.cpp`, `src/llama-moe-cache.h`, `src/llama-graph.cpp`, `src/llama-graph.h`, `src/models/models.h`) so that a layer can present several expert selections in one pass and so that the graph is sized for the loop.
 
 ## What works
@@ -152,7 +154,7 @@ With speculative decoding most of this overhead disappears: the 9B at `TIP_N=8` 
 
 ## Results reported in the paper
 
-Internal evaluations, small n, one model family, quantized checkpoints, consumer hardware. Holdout replication is pending.
+Internal evaluations, small n, one architecture, quantized checkpoints, consumer hardware. Holdout replication is pending.
 
 - The square-root schedule at budget 8 matched a uniform budget of 12 on blind panels. A uniform budget of 16 was worse than both.
 - Per-layer probes show the iterate settling within about three iterations.
@@ -165,7 +167,7 @@ Internal evaluations, small n, one model family, quantized checkpoints, consumer
 - The loop is an **amplifier, not a corrector**: it sharpens what the underlying configuration already does, including its instabilities.
 - More iterations are not monotonically better. Past the peak, quality regresses.
 - Prompt processing is not looped, so tasks whose difficulty lies in reading a long input get no benefit.
-- One model family. Pure-attention stacks have no state-space majority to bound the cost.
+- One architecture (Qwen hybrids), five checkpoints. Pure-attention stacks have no state-space majority to bound the cost.
 - With several slots, outputs are not token-identical to a single slot. This is a property of batched inference in llama.cpp and holds with the loop off as well.
 - Not included: the convergence probe, per-request control of the budget, and the CUDA expert-gather kernel described in the paper.
 

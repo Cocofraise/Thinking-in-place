@@ -64,7 +64,7 @@ On public benchmarks, same model: GSM8K (first 200 test questions) is saturated,
 
 | Area | Status |
 |---|---|
-| Models | Qwen3.5-style hybrids in llama.cpp: dense (9B, 27B) and mixture-of-experts (35B) |
+| Models | Qwen hybrids in llama.cpp, dense and mixture-of-experts. Tested: Qwen 3.8 27B, Qwen 3.5 35B, Qwythos 9B, Ornith 9B and 35B. Other architectures untested |
 | Hardware | GPU, CPU-only, MoE experts in host memory (`--n-cpu-moe`), MoE expert cache (`--moe-cache-mib`) |
 | Speculative decoding | `draft-mtp` and `draft-dflash` return the same text as the loop alone, 2.3 to 2.6 times faster |
 | Parallel slots | 4 and 8 slots, dense and MoE |
@@ -95,7 +95,7 @@ Time per token is linear in the number of block evaluations. With `draft-mtp` th
 | Reasoning benefit when the model actually deliberates | paper, two models, a handful of items |
 | Frozen and free MoE routing behave differently | paper, full outputs read side by side, one run per mode and prompt |
 
-The quality results are internal evaluations on one model family and quantized checkpoints; holdout replication is pending. None of them is a public benchmark.
+Apart from the two public benchmarks above, the quality results are internal evaluations, on one architecture and quantized checkpoints; holdout replication is pending.
 
 ## Intended use
 
@@ -107,7 +107,7 @@ The quality results are internal evaluations on one model family and quantized c
 - The loop amplifies what the base configuration does, good or bad. It does not repair an unstable setup.
 - Too many iterations make results worse.
 - No benefit on tasks whose difficulty lies in reading the prompt.
-- One model family.
+- One architecture (Qwen hybrids), five checkpoints.
 
 ## How this was made
 
