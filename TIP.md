@@ -25,6 +25,8 @@ K/V entries of the current positions are rewritten at each iteration; the last i
 
 ## Quick start
 
+**Windows + NVIDIA, no build needed:** download the two archives from the [v1.0 release](https://github.com/Cocofraise/Thinking-in-place/releases/tag/v1.0) (program, and the CUDA 12 runtime if you do not have the CUDA toolkit), unzip them into the same folder, then run `set TIP_N=8` followed by `llama-server.exe -m model.gguf -c 8192 -ngl 99`. The binary was checked on one machine only (RTX 4070); reports from other setups are welcome.
+
 Build llama.cpp as usual, then:
 
 ```bash

@@ -22,7 +22,7 @@ This repository contains code and a paper, not weights. The patch modifies the i
 
 - **Author:** Vincent Mathieu Malet · ORCID [0009-0003-9945-7296](https://orcid.org/0009-0003-9945-7296) · independent researcher · cocofraise974@gmail.com
 - **Paper:** *Thinking in Place: Anchored Recurrent Depth and the Convergence of Modeling*, in `paper/` (English and French), DOI [10.5281/zenodo.24507288](https://doi.org/10.5281/zenodo.24507288)
-- **Code:** https://github.com/Cocofraise/Thinking-in-place
+- **Code:** https://github.com/Cocofraise/Thinking-in-place · **Windows build:** [v1.0 release](https://github.com/Cocofraise/Thinking-in-place/releases/tag/v1.0)
 - **Base:** llama.cpp `af5c583` (2026-11-23)
 - **Licence:** non-commercial. Thinking in Place additions under PolyForm Noncommercial 1.0.0, documentation and paper under CC BY-NC 4.0, llama.cpp itself under MIT. **Commercial use requires a licence from the author** (see `LICENSE-TIP.md`).
 
@@ -38,6 +38,8 @@ R(l) = max(1, round(N·√(l/l_max)))            beta = 1 - φ⁻¹ / N
 Only full-attention layers loop. Recurrent (gated-delta-net) layers run once. Only predicting passes loop; prompt processing is single-pass.
 
 ## Use
+
+**Windows + NVIDIA, no build needed:** download the two archives from the [v1.0 release](https://github.com/Cocofraise/Thinking-in-place/releases/tag/v1.0) (program, and the CUDA 12 runtime if you do not have the CUDA toolkit), unzip them into the same folder, then run `set TIP_N=8` followed by `llama-server.exe -m model.gguf -c 8192 -ngl 99`. The binary was checked on one machine only (RTX 4070); reports from other setups are welcome.
 
 Apply `patch/thinking-in-place-vs-llama.cpp-af5c583.diff` to llama.cpp at commit `af5c583`, build as usual, then:
 
