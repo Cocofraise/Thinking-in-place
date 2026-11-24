@@ -1,3 +1,8 @@
+> **Thinking in Place (TiP)** — this is llama.cpp with a patch that adds training-free recurrent depth:
+> a frozen hybrid model re-applies its own attention blocks several times per generated token.
+> Build as usual and run with `TIP_N=8`. See [TIP.md](TIP.md) for the mechanism, settings and measurements,
+> and [LICENSE-TIP.md](LICENSE-TIP.md) for the licence of the additions (non-commercial). The llama.cpp README follows unchanged.
+
 # llama.cpp
 
 ![llama.cpp](https://raw.githubusercontent.com/ggml-org/llama-brand/refs/heads/master/logo/svg/cover/llama-cpp/cover-llama-cpp-dark.svg)
