@@ -343,11 +343,16 @@ struct llama_moe_cache::impl {
         moe_cache_lru lru;
     };
 
+    // TIP: selections of one layer that one graph may look up, see get_slot_map
+    static constexpr int32_t max_pass = 32;
+
     struct layer {
         int32_t ig = -1;                    // -1 if the layer is not cached
         ggml_tensor * slot_map = nullptr;   // I32 [1, n_expert] in host memory
         ggml_tensor * slot_map_cpu = nullptr; // looked up in place of slot_map by the graphs with a CPU part, if cpu_share > 0, its data is not used
         ggml_tensor * cpu_map  = nullptr;   // I32 [1, n_expert] in host memory, if cpu_share > 0
+        std::vector<ggml_tensor *> slot_map_pass;     // TIP: aliases of slot_map for the later selections of the layer in one graph, their data is not used
+        std::vector<ggml_tensor *> slot_map_cpu_pass; // TIP: the same for slot_map_cpu
         std::vector<int32_t> cpu_experts;   // experts set in cpu_map
         uint32_t cpu_acc = 0;               // fraction of a miss carried over to the next plan, in 1/65536
         std::vector<ggml_tensor *> experts; // host expert tensors, in the order of the banks
@@ -517,6 +522,7 @@ struct llama_moe_cache::impl {
             g.lru.init(model.layers.size(), n_expert, g.n_slots);
             n_tensors[g.id] += g.ref.size()*(1 + g.layers.size());
             n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1); // slot maps and CPU map
+            n_tensors_host  += g.layers.size()*(n_zero > 0 ? 2 : 1)*(max_pass - 1); // TIP: slot map aliases of the later passes
         }
         if (n_tensors_host == 0) {
             throw std::runtime_error("MoE cache is too small to hold the experts of one token");
@@ -571,11 +577,25 @@ struct llama_moe_cache::impl {
                 ggml_format_name(l.slot_map, "moe_cache.slot_map-%d", il);
                 layer_of[l.slot_map] = { il, false };
                 buf_host_size += GGML_PAD(ggml_nbytes(l.slot_map), alignment_host);
+                for (int32_t p = 1; p < max_pass; ++p) { // TIP
+                    ggml_tensor * alias = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
+                    ggml_format_name(alias, "moe_cache.slot_map-%d.%d", il, p);
+                    layer_of[alias] = { il, false };
+                    buf_host_size += GGML_PAD(ggml_nbytes(alias), alignment_host);
+                    l.slot_map_pass.push_back(alias);
+                }
                 if (n_zero > 0) {
                     l.slot_map_cpu = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
                     ggml_format_name(l.slot_map_cpu, "moe_cache.slot_map_cpu-%d", il);
                     layer_of[l.slot_map_cpu] = { il, true };
                     buf_host_size += GGML_PAD(ggml_nbytes(l.slot_map_cpu), alignment_host);
+                    for (int32_t p = 1; p < max_pass; ++p) { // TIP
+                        ggml_tensor * alias = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
+                        ggml_format_name(alias, "moe_cache.slot_map_cpu-%d.%d", il, p);
+                        layer_of[alias] = { il, true };
+                        buf_host_size += GGML_PAD(ggml_nbytes(alias), alignment_host);
+                        l.slot_map_cpu_pass.push_back(alias);
+                    }
                     l.cpu_map = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
                     ggml_format_name(l.cpu_map, "moe_cache.cpu_map-%d", il);
                     buf_host_size += GGML_PAD(ggml_nbytes(l.cpu_map), alignment_host);
@@ -688,7 +708,8 @@ struct llama_moe_cache::impl {
 
     // the slot map of layer il, if its experts can be read from the cache for n_tokens tokens, nullptr otherwise
     // cpu_part: the graph computes the misses in the CPU map of the layer (see get_cpu_map)
-    ggml_tensor * get_slot_map(int32_t il, int64_t n_tokens, int64_t n_expert_used, bool cpu_part) const {
+    // pass: which selection of the layer in the graph (TIP), 0 for the first
+    ggml_tensor * get_slot_map(int32_t il, int64_t n_tokens, int64_t n_expert_used, bool cpu_part, int32_t pass) const {
         if (il < 0 || il >= (int32_t) layers.size() || layers[il].ig < 0) {
             return nullptr;
         }
@@ -699,6 +720,13 @@ struct llama_moe_cache::impl {
             return nullptr;
         }
         GGML_ASSERT(!cpu_part || l.slot_map_cpu != nullptr);
+        if (pass > 0) {
+            // TIP: a later selection of the same layer in the same graph (a looped block that routes again).
+            // the scheduler copies a host weight once per graph, so each selection looks up its own alias of the slot map:
+            // it then gets its own copy, hence its own copy callback, which uploads the experts of that selection
+            const std::vector<ggml_tensor *> & aliases = cpu_part ? l.slot_map_cpu_pass : l.slot_map_pass;
+            return pass - 1 < (int32_t) aliases.size() ? aliases[pass - 1] : nullptr;
+        }
         return cpu_part ? l.slot_map_cpu : l.slot_map;
     }
 
@@ -899,7 +927,7 @@ llama_moe_cache_lookup llama_moe_cache::build_lookup(const llm_graph_context & g
     }
 
     ggml_tensor * cpu_map  = cpu_part ? pimpl->get_cpu_map(il, selected_experts->ne[1]) : nullptr;
-    ggml_tensor * slot_map = pimpl->get_slot_map(il, selected_experts->ne[1], selected_experts->ne[0], cpu_map != nullptr);
+    ggml_tensor * slot_map = pimpl->get_slot_map(il, selected_experts->ne[1], selected_experts->ne[0], cpu_map != nullptr, layer.pass);
     if (slot_map == nullptr) {
         return {};
     }

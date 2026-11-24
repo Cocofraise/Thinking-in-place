@@ -253,10 +253,8 @@ llama_model_qwen35moe::graph::graph(const llm_graph_params & params) :
                 // TIP_FREEZE_ROUTE: choose the experts once, from the first iteration's
                 // FFN input, and dispatch every iteration of this token to that same set. Only the
                 // discrete choice is frozen: the gate weights are still recomputed each iteration.
-                // With the MoE expert cache (--moe-cache-mib) the choice is always frozen: the cache
-                // keeps one slot map per layer and per pass, so a layer must present one selection.
                 ggml_tensor * sel = nullptr;
-                if ((loop.freeze_route || moe_cache != nullptr) && R > 1) {
+                if (loop.freeze_route && R > 1) {
                     if (route == nullptr) {
                         // top-k of the router logits == top-k of their softmax
                         route = ggml_argsort_top_k(ctx0, build_lora_mm(model.layers[il].ffn_gate_inp, attn_post_norm), n_expert_used);
@@ -265,8 +263,14 @@ llama_model_qwen35moe::graph::graph(const llm_graph_params & params) :
                     sel = route;
                 }
 
+                // Free routing selects again at each iteration: tell the MoE expert cache
+                // (--moe-cache-mib) that this is another selection of the same layer, so that it
+                // uploads the experts of this one too. Frozen routing is a single selection.
+                moe_cache_pass = sel == nullptr ? t : 0;
+
                 // MOE FFN layer
                 cur = build_layer_ffn(attn_post_norm, il, sel);
+                moe_cache_pass = 0;
                 cb(cur, "ffn_out", il);
 
                 // Residual connection for FFN - add to the tensor from before post_attention_layernorm

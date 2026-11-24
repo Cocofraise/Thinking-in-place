@@ -1146,6 +1146,7 @@ struct llm_graph_context {
     const llama_memory_context_i * mctx;
     const llama_cross            * cross;
     const llama_moe_cache        * moe_cache;
+    int32_t moe_cache_pass = 0; // TIP: which expert selection of the current layer this is, for graphs that route a layer more than once
 
     const llama_hadamard * hdmd;
 

@@ -29,8 +29,7 @@
 //   TIP_DEPTH_LAW     "sqrt" | "log" | "square" : taper R with layer index (default flat)
 //   TIP_LAYERS        csv of layer indices to loop                         (default all full-attention)
 //   TIP_FFN_LAST      1 : run the FFN only on the last iteration           (default 0)
-//   TIP_FREEZE_ROUTE MoE only: keep the experts chosen at iteration 0     (default 1 ; 0 = re-route every iteration;
-//                    always 1 with the MoE expert cache, --moe-cache-mib)
+//   TIP_FREEZE_ROUTE MoE only: keep the experts chosen at iteration 0     (default 1 ; 0 = re-route every iteration)
 //   TIP_DECODE_MAX    largest ubatch (tokens per sequence) still looped    (default 32)
 //   TIP_PREFILL       1 : loop prompt-processing batches too               (default 0)
 //   TIP_ADAPTIVE_TAU  per-token freeze once cos(s_t, s_{t-1}) >= tau       (default 0 = off)

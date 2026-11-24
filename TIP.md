@@ -32,7 +32,7 @@ The Qwen3.5-style hybrid family as implemented by llama.cpp:
 | `src/models/qwen35.cpp` | dense hybrid (e.g. 9B, 27B) |
 | `src/models/qwen35moe.cpp` | mixture-of-experts hybrid (e.g. 35B) |
 
-All the logic and every knob live in `src/models/tip.h`.
+All the logic and every knob live in `src/models/tip.h`. The patch also touches four shared files of llama.cpp, about forty lines marked `TIP`, to let the MoE expert cache serve several selections of one layer in the same pass: `src/llama-moe-cache.cpp`, `src/llama-moe-cache.h`, `src/llama-graph.cpp`, `src/llama-graph.h`.
 
 ## Quick start
 
@@ -74,7 +74,9 @@ The expert router sits inside the looped block. This gives two distinct modes, c
 
 On a small panel of Bayesian trap questions (35B, reasoning enabled, n = 4 items) the frozen mode caught its own errors on the two items where the two modes differed. Treat this as a signal, not a law.
 
-With the MoE expert cache of llama.cpp (`--moe-cache-mib`) routing is always frozen, whatever `TIP_FREEZE_ROUTE` says: that cache keeps one slot table per layer and per pass, so a layer has to present a single selection. The two modes run at the same speed on this port.
+Both modes also work with the MoE expert cache of llama.cpp (`--moe-cache-mib`), which keeps the experts in host memory and uploads the selected ones to the GPU. That cache originally handled one selection per layer and per pass; this patch lets a layer present several, so that free routing uploads the experts of each iteration.
+
+Speed: without the cache the two modes run at the same speed (within about 1%). With the cache, frozen routing is about 8% faster (27.8 against 25.7 tokens/s on the 35B, experts of 16 layers in host memory, 1 GiB cache), because the experts of a token are uploaded once instead of once per iteration.
 
 ## Cost
 

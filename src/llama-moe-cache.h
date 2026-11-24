@@ -17,6 +17,7 @@ struct llama_moe_cache_layer {
     ggml_tensor * down_exps;
     ggml_tensor * gate_up_exps;
     bool          weight_before_ffn; // the router weights scale the expert input
+    int32_t       pass = 0;          // TIP: which selection of this layer in the graph, 0 for the first (a looped block may route again)
 };
 
 // the lookup of the selected experts of a layer in the MoE cache, see llama_moe_cache::build_lookup

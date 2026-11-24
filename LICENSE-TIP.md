@@ -14,6 +14,7 @@ The additions are:
 
 - `src/models/tip.h`, in full;
 - the code marked `TIP` in `src/models/qwen35.cpp` and `src/models/qwen35moe.cpp`, and the matching declaration change in `src/models/models.h`;
+- the lines marked `TIP` in `src/llama-moe-cache.cpp`, `src/llama-moe-cache.h`, `src/llama-graph.cpp` and `src/llama-graph.h`;
 - `TIP.md`, `HF_CARD.md` and this file.
 
 **Code.** The additions are licensed under the PolyForm Noncommercial License 1.0.0. The full text is at <https://polyformproject.org/licenses/noncommercial/1.0.0/> (SPDX identifier `PolyForm-Noncommercial-1.0.0`). In short: you may use, study, modify and share them for any non-commercial purpose, including research, teaching and personal use, as long as you keep this notice.
