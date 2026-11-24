@@ -187,7 +187,7 @@ Shared for non-commercial use.
 - The Thinking in Place additions are under the PolyForm Noncommercial License 1.0.0; this documentation and the paper are under CC BY-NC 4.0.
 - **Commercial use requires a licence from the author.**
 
-Details and contact: `LICENSE-TIP.md`. This repository ships code only; model weights keep their own licences.
+Details: `LICENSE-TIP.md`. Contact: cocofraise974@gmail.com. This repository ships code only; model weights keep their own licences.
 
 ## How this was made
 

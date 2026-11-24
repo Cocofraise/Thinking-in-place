@@ -20,7 +20,7 @@ language:
 
 This repository contains code and a paper, not weights. The patch modifies the inference graph so that a frozen, pretrained model re-applies its own full-attention blocks several times per generated token, each time pulled back toward the block's original input. You keep your GGUF and set one variable.
 
-- **Author:** Vincent Mathieu Malet · ORCID [0009-0003-9945-7296](https://orcid.org/0009-0003-9945-7296) · independent researcher
+- **Author:** Vincent Mathieu Malet · ORCID [0009-0003-9945-7296](https://orcid.org/0009-0003-9945-7296) · independent researcher · cocofraise974@gmail.com
 - **Paper:** *Thinking in Place: Anchored Recurrent Depth and the Convergence of Modeling*, in `paper/` (English and French)
 - **Base:** llama.cpp `af5c583` (2026-11-23)
 - **Licence:** non-commercial. Thinking in Place additions under PolyForm Noncommercial 1.0.0, documentation and paper under CC BY-NC 4.0, llama.cpp itself under MIT. **Commercial use requires a licence from the author** (see `LICENSE-TIP.md`).

@@ -23,7 +23,7 @@ The additions are:
 
 ## Commercial use
 
-Any commercial use of the additions requires a separate licence from the author. That includes selling them, offering them as part of a paid product or service, and running them in a commercial deployment. Contact the author through the ORCID profile above.
+Any commercial use of the additions requires a separate licence from the author. That includes selling them, offering them as part of a paid product or service, and running them in a commercial deployment. Contact the author at cocofraise974@gmail.com.
 
 ## Model weights
 
