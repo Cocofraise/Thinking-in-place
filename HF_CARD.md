@@ -16,6 +16,8 @@ language:
 
 # Thinking in Place (TiP)
 
+> **No weights here.** This is an inference method for llama.cpp, applied to a GGUF you already have. Hugging Face lists it as a model because it has no repository type for methods. Code: [GitHub](https://github.com/Cocofraise/Thinking-in-place#readme) · Windows build: [v1.0](https://github.com/Cocofraise/Thinking-in-place/releases/tag/v1.0) · Paper: [DOI 10.5281/zenodo.24507288](https://doi.org/10.5281/zenodo.24507288)
+
 **Upgrade the model you already run.** No bigger download, no retraining, no extra weights: one variable, and a frozen model thinks harder when the question is hard. 92 → 103 of 108 checkable reasoning items on a 9B. It costs time (about 2× per token) and nothing else.
 
 ![One token through the model: attention blocks are re-applied, each pass pulled back to its own input](https://raw.githubusercontent.com/Cocofraise/Thinking-in-place/tip/media/tip/tip-mechanism-light.svg)
@@ -24,7 +26,7 @@ Training-free recurrent depth for hybrid attention / state-space models, as a ll
 
 ![Correct answers, single pass versus Thinking in Place: 83.3 to 98.1 percent and 87.0 to 92.6 percent on a reasoning set, 78.5 to 84.8 percent on MATH-500 levels 4-5, 97.5 to 96.0 percent on GSM8K](https://raw.githubusercontent.com/Cocofraise/Thinking-in-place/tip/media/tip/tip-results-light.svg)
 
-This repository contains code and a paper, not weights. The patch modifies the inference graph so that a frozen, pretrained model re-applies its own full-attention blocks several times per generated token, each time pulled back toward the block's original input. You keep your GGUF and set one variable.
+The patch modifies the inference graph so that a frozen, pretrained model re-applies its own full-attention blocks several times per generated token, each time pulled back toward the block's original input. You keep your GGUF and set one variable.
 
 - **Author:** Vincent Mathieu Malet · ORCID [0009-0003-9945-7296](https://orcid.org/0009-0003-9945-7296) · independent researcher · cocofraise974@gmail.com
 - **Paper:** *Thinking in Place: Anchored Recurrent Depth and the Convergence of Modeling*, in `paper/` (English and French), DOI [10.5281/zenodo.24507288](https://doi.org/10.5281/zenodo.24507288)
