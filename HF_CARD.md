@@ -1,7 +1,7 @@
 ---
 license: other
 license_name: polyform-noncommercial-1.0.0
-license_link: https://polyformproject.org/licenses/noncommercial/1.0.0/
+license_link: https://polyformproject.org/licenses/noncommercial/1.0.0
 library_name: llama.cpp
 tags:
   - llama.cpp
@@ -18,7 +18,11 @@ language:
 
 **Upgrade the model you already run.** No bigger download, no retraining, no extra weights: one variable, and a frozen model thinks harder when the question is hard. 92 → 103 of 108 checkable reasoning items on a 9B. It costs time (about 2× per token) and nothing else.
 
+![One token through the model: attention blocks are re-applied, each pass pulled back to its own input](https://raw.githubusercontent.com/Cocofraise/Thinking-in-place/tip/media/tip/tip-mechanism-light.svg)
+
 Training-free recurrent depth for hybrid attention / state-space models, as a llama.cpp patch.
+
+![Correct answers, single pass versus Thinking in Place: 83.3 to 98.1 percent and 87.0 to 92.6 percent on a reasoning set, 78.5 to 84.8 percent on MATH-500 levels 4-5, 97.5 to 96.0 percent on GSM8K](https://raw.githubusercontent.com/Cocofraise/Thinking-in-place/tip/media/tip/tip-results-light.svg)
 
 This repository contains code and a paper, not weights. The patch modifies the inference graph so that a frozen, pretrained model re-applies its own full-attention blocks several times per generated token, each time pulled back toward the block's original input. You keep your GGUF and set one variable.
 
