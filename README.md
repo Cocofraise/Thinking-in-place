@@ -39,7 +39,7 @@ Temperature 0, reasoning enabled, one 9B model. The reasoning set is nine statem
 
 </details>
 
-**What it costs.** Time: about 2× per token on a 9B, 1.7× on a 35B mixture-of-experts. With speculative decoding most of that overhead disappears.
+**What it costs.** Time: about 2× per token on a 9B, 1.7× on a 35B mixture-of-experts. With speculative decoding most of that overhead disappears. Memory: about 1% more VRAM (6.13 → 6.20 GB measured on a 9B at 8k context), since the weights are the same.
 
 **What it does not do.** It brings no gain where the model is already right (GSM8K above), and it does not restore a capacity that quantization has destroyed.
 

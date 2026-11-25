@@ -154,6 +154,8 @@ The loop adds compute only on full-attention layers and only on predicting passe
 
 On the 9B the time per token is linear in the number of block evaluations, 0.49 ms each. The loop therefore executes exactly the iterations the schedule allocates, and the square-root schedule costs about half of a uniform budget of 12 (45 block evaluations per token against 96).
 
+Memory is nearly unchanged, since no weights are added: 6,130 MiB of VRAM with the loop off and 6,204 MiB with `TIP_N=8` (9B at Q5, 8k context, all layers on GPU), about 1% more.
+
 With speculative decoding most of this overhead disappears: the 9B at `TIP_N=8` runs at 81 tokens/s with `draft-mtp`, faster than the single pass without speculation (59 tokens/s).
 
 ## Results reported in the paper
