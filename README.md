@@ -1,5 +1,8 @@
-> **Thinking in Place (TiP)** — this is llama.cpp with a patch that adds training-free recurrent depth:
+> **Thinking in Place (TiP) — more reasoning from the model you already run, with no extra weights to load.**
+> This is llama.cpp with a patch that adds training-free recurrent depth:
 > a frozen hybrid model re-applies its own attention blocks several times per generated token.
+> Same GGUF, same quantization: the gain is paid in time (about 2× per token), not in a bigger model.
+> On a 9B, 92 → 103 of 108 checkable reasoning items; no gain where the model is already right.
 > Build as usual and run with `TIP_N=8`. See [TIP.md](TIP.md) for the mechanism, settings and measurements,
 > and [LICENSE-TIP.md](LICENSE-TIP.md) for the licence of the additions (non-commercial). The llama.cpp README follows unchanged.
 

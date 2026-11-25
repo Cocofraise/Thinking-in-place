@@ -16,7 +16,9 @@ language:
 
 # Thinking in Place (TiP)
 
-**Training-free recurrent depth for hybrid attention / state-space models, as a llama.cpp patch.**
+**More reasoning from the model you already run, with no extra weights to load.** Same GGUF, same quantization: the gain is paid in time (about 2× per token), not in a bigger model.
+
+Training-free recurrent depth for hybrid attention / state-space models, as a llama.cpp patch.
 
 This repository contains code and a paper, not weights. The patch modifies the inference graph so that a frozen, pretrained model re-applies its own full-attention blocks several times per generated token, each time pulled back toward the block's original input. You keep your GGUF and set one variable.
 
