@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Standard pass versus Thinking in Place: attention blocks are re-applied, anchored to their input">
+<defs><marker id="flight" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#52514e"/></marker>
+<marker id="blight" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2a78d6"/></marker></defs>
+<rect width="760" height="330" rx="10" fill="#fcfcfb" stroke="#d9d8d3"/>
+<text x="24" y="34" font-size="16" font-weight="600" fill="#0b0b0b">One token through the model</text>
+<text x="24" y="94" font-size="14" font-weight="600" fill="#0b0b0b">Standard</text>
+<text x="24" y="111" font-size="12" fill="#52514e">each block runs once</text>
+<line x1="190" y1="98" x2="708" y2="98" stroke="#52514e" stroke-width="1.5" marker-end="url(#flight)"/>
+<rect x="210" y="80" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="264" y="80" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="318" y="80" width="42" height="36" rx="6" fill="#2a78d6"/>
+<rect x="372" y="80" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="426" y="80" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="480" y="80" width="42" height="36" rx="6" fill="#2a78d6"/>
+<rect x="534" y="80" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="588" y="80" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="642" y="80" width="42" height="36" rx="6" fill="#2a78d6"/>
+<text x="24" y="210" font-size="14" font-weight="600" fill="#0b0b0b">Thinking in Place</text>
+<text x="24" y="227" font-size="12" fill="#52514e">with TIP_N=8</text>
+<line x1="190" y1="214" x2="708" y2="214" stroke="#52514e" stroke-width="1.5" marker-end="url(#flight)"/>
+<rect x="210" y="196" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="264" y="196" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="318" y="196" width="42" height="36" rx="6" fill="#2a78d6"/>
+<path d="M 356 194 C 366 162, 312 162, 323 192" fill="none" stroke="#2a78d6" stroke-width="2" marker-end="url(#blight)"/>
+<text x="339" y="160" font-size="13" font-weight="600" text-anchor="middle" fill="#0b0b0b">×5</text>
+<rect x="372" y="196" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="426" y="196" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="480" y="196" width="42" height="36" rx="6" fill="#2a78d6"/>
+<path d="M 518 194 C 528 162, 474 162, 485 192" fill="none" stroke="#2a78d6" stroke-width="2" marker-end="url(#blight)"/>
+<text x="501" y="160" font-size="13" font-weight="600" text-anchor="middle" fill="#0b0b0b">×7</text>
+<rect x="534" y="196" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="588" y="196" width="42" height="36" rx="6" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/>
+<rect x="642" y="196" width="42" height="36" rx="6" fill="#2a78d6"/>
+<path d="M 680 194 C 690 162, 636 162, 647 192" fill="none" stroke="#2a78d6" stroke-width="2" marker-end="url(#blight)"/>
+<text x="663" y="160" font-size="13" font-weight="600" text-anchor="middle" fill="#0b0b0b">×8</text>
+<text x="264" y="252" font-size="12" text-anchor="middle" fill="#52514e">shallow layers</text>
+<text x="588" y="252" font-size="12" text-anchor="middle" fill="#52514e">deep layers get more passes</text>
+<rect x="24" y="286" width="18" height="18" rx="4" fill="#2a78d6"/><text x="50" y="300" font-size="12" fill="#52514e">attention block: re-applied, each pass pulled back to its own input</text>
+<rect x="450" y="286" width="18" height="18" rx="4" fill="#fcfcfb" stroke="#8f8e88" stroke-width="1.5"/><text x="476" y="300" font-size="12" fill="#52514e">state-space block: always once</text>
+</svg>

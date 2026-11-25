@@ -17,7 +17,7 @@ The additions are:
 - the lines marked `TIP` in `src/llama-moe-cache.cpp`, `src/llama-moe-cache.h`, `src/llama-graph.cpp`, `src/llama-graph.h` and `src/models/models.h`;
 - `TIP.md`, `HF_CARD.md` and this file.
 
-**Code.** The additions are licensed under the PolyForm Noncommercial License 1.0.0. The full text is at <https://polyformproject.org/licenses/noncommercial/1.0.0/> (SPDX identifier `PolyForm-Noncommercial-1.0.0`). In short: you may use, study, modify and share them for any non-commercial purpose, including research, teaching and personal use, as long as you keep this notice.
+**Code.** The additions are licensed under the PolyForm Noncommercial License 1.0.0. The full text is at <https://polyformproject.org/licenses/noncommercial/1.0.0> (SPDX identifier `PolyForm-Noncommercial-1.0.0`). In short: you may use, study, modify and share them for any non-commercial purpose, including research, teaching and personal use, as long as you keep this notice.
 
 **Documentation and paper.** The documentation files above and the paper *Thinking in Place: Anchored Recurrent Depth and the Convergence of Modeling* are shared under Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0), <https://creativecommons.org/licenses/by-nc/4.0/>.
 

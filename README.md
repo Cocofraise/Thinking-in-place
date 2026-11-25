@@ -2,7 +2,15 @@
 
 **Upgrade the model you already run.** No bigger download, no retraining, no extra weights: one variable, and a frozen model thinks harder when the question is hard.
 
-Thinking in Place is a patch on top of [llama.cpp](https://github.com/ggml-org/llama.cpp). It makes a frozen, pretrained hybrid model re-apply its own attention blocks several times per generated token, each pass anchored back to the block's input. You keep your GGUF.
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24507288.svg)](https://doi.org/10.5281/zenodo.24507288)
+[![Release](https://img.shields.io/github/v/release/Cocofraise/Thinking-in-place?label=Windows%20build)](https://github.com/Cocofraise/Thinking-in-place/releases/tag/v1.0)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/tip/tip-mechanism-dark.svg">
+  <img alt="One token through the model. Standard: each block runs once. Thinking in Place: attention blocks are re-applied, 5, 7 and 8 times from shallow to deep, each pass pulled back to its own input; state-space blocks always run once." src="media/tip/tip-mechanism-light.svg" width="760">
+</picture>
+
+Thinking in Place is a patch on top of [llama.cpp](https://github.com/ggml-org/llama.cpp). A model normally reads each token once through its layers. Here its attention blocks go over the same token several times, each pass anchored to where it started, before the next token is written. Nothing is trained and nothing is added to the file: you keep your GGUF.
 
 - **Paper:** *Thinking in Place: Anchored Recurrent Depth and the Convergence of Modeling*, DOI [10.5281/zenodo.24507288](https://doi.org/10.5281/zenodo.24507288)
 - **Windows + NVIDIA build:** [v1.0 release](https://github.com/Cocofraise/Thinking-in-place/releases/tag/v1.0)
@@ -10,19 +18,30 @@ Thinking in Place is a patch on top of [llama.cpp](https://github.com/ggml-org/l
 
 ## What you get
 
-Nine reasoning items with a checkable answer, six variants each, temperature 0, on a 9B model:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/tip/tip-results-dark.svg">
+  <img alt="Correct answers, single pass versus Thinking in Place, same model and same weights. Reasoning set at Q4: 83.3% to 98.1%. Reasoning set at Q5: 87.0% to 92.6%. MATH-500 levels 4-5: 78.5% to 84.8%. GSM8K, already solved by the model: 97.5% to 96.0%." src="media/tip/tip-results-light.svg" width="760">
+</picture>
 
-| Quantization | Single pass | `TIP_N=8` |
+On a 9B model, a set of reasoning questions with a checkable answer goes from **92 to 103 correct out of 108**. Compared question by question, the loop wins 13 answers and loses 2.
+
+<details>
+<summary>The numbers behind the figure</summary>
+
+| Test | Single pass | `TIP_N=8` |
 |---|---|---|
-| Q5 | 47/54 | 50/54 |
-| Q4 | 45/54 | 53/54 |
-| Both | 92/108 | **103/108** |
+| Reasoning set, Q4 quantization (54 items) | 45 | 53 |
+| Reasoning set, Q5 quantization (54 items) | 47 | 50 |
+| MATH-500, levels 4–5, numeric answers (158 questions) | 124 (78.5%) | 134 (84.8%) |
+| GSM8K, first 200 test questions | 195 (97.5%) | 192 (96.0%) |
 
-Paired item by item, the loop wins 13 answers and loses 2. On a harder public set (MATH-500, levels 4–5, 158 questions) it goes from 78.5% to 84.8%.
+Temperature 0, reasoning enabled, one 9B model. The reasoning set is nine statements in six variants each, not 54 independent questions. Details and limits in [TIP.md](TIP.md).
 
-It costs time, about 2× per token, and nothing else. With speculative decoding most of that overhead disappears.
+</details>
 
-No gain where the model is already right: do not expect it to help on a task your model already solves.
+**What it costs.** Time: about 2× per token on a 9B, 1.7× on a 35B mixture-of-experts. With speculative decoding most of that overhead disappears.
+
+**What it does not do.** It brings no gain where the model is already right (GSM8K above), and it does not restore a capacity that quantization has destroyed.
 
 ## Try it
 
@@ -39,7 +58,7 @@ llama-server.exe -m model.gguf -c 8192 -ngl 99
 TIP_N=8 ./llama-server -m model.gguf -c 8192 -ngl 99
 ```
 
-With `TIP_N` unset the graph is the stock llama.cpp graph and the output is identical to unpatched llama.cpp.
+Without `TIP_N` the output is identical to unpatched llama.cpp, so you can compare on your own prompts.
 
 ## Which models
 
