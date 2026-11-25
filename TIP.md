@@ -1,6 +1,6 @@
 # Thinking in Place (TiP) — training-free recurrent depth for llama.cpp
 
-**More reasoning from the model you already run, with no extra weights to load.** Same GGUF, same quantization: the gain is paid in time (about 2× per token), not in a bigger model.
+**Upgrade the model you already run.** No bigger download, no retraining, no extra weights: one variable, and a frozen model thinks harder when the question is hard. 92 → 103 of 108 checkable reasoning items on a 9B. It costs time (about 2× per token) and nothing else.
 
 A patch on top of [llama.cpp](https://github.com/ggml-org/llama.cpp) that lets a **frozen, pretrained** hybrid model re-apply its own attention blocks several times per generated token. No fine-tuning, no adapters, no extra weights: you load the same GGUF and set one environment variable.
 

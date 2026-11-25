@@ -16,7 +16,7 @@ language:
 
 # Thinking in Place (TiP)
 
-**More reasoning from the model you already run, with no extra weights to load.** Same GGUF, same quantization: the gain is paid in time (about 2× per token), not in a bigger model.
+**Upgrade the model you already run.** No bigger download, no retraining, no extra weights: one variable, and a frozen model thinks harder when the question is hard. 92 → 103 of 108 checkable reasoning items on a 9B. It costs time (about 2× per token) and nothing else.
 
 Training-free recurrent depth for hybrid attention / state-space models, as a llama.cpp patch.
 
